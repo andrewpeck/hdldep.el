@@ -1,9 +1,9 @@
-;;; hdl-deps.el --- Visualization of HDL dependency trees. -*- lexical-binding: t; -*-
+;;; hdldep.el --- Visualization of HDL dependency trees -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2023-2026 Andrew Peck
 
 ;; Author: Andrew Peck <peckandrew@gmail.com>
-;; URL: https://github.com/andrewpeck/hdl-deps.el
+;; URL: https://github.com/andrewpeck/hdldep.el
 ;; Version: 0.0.1
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: tools vhdl verilog
@@ -372,5 +372,5 @@ Queries that raise `treesit-query-error' are silently skipped."
             (push (cons module-name formal-ports) results))))
       results)))
 
-(provide 'hdl-deps)
-;;; hdl-deps.el ends here
+(provide 'hdldep)
+;;; hdldep.el ends here

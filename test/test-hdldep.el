@@ -1,6 +1,6 @@
 ;;; test-hog.el -*- lexical-binding: t; -*-
 
-(require 'hdl-deps)
+(require 'hdldep)
 (require 'ert)
 (require 'cl-lib)
 (require 'project)
