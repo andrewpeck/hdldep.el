@@ -33,6 +33,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'treesit)
+(require 'hierarchy)
 
 ;;------------------------------------------------------------------------------
 ;; Hierarchy Display
@@ -142,48 +143,45 @@ and returns the equivalent output as a graphviz graph{}"
   "Number of port names in common between PORTS-A and PORTS-B."
   (length (cl-intersection ports-a ports-b)))
 
-(defun hdldep--find-file-for-module (module dir)
-  "Find the file in DIR that defines MODULE (a symbol) via grep then tree-sitter.
-When multiple files define MODULE, uses port scoring to pick the best match."
-  (let* ((name (symbol-name module))
-         (cmd (format "grep -rl -w %s %s --include='*.vhd' --include='*.vhdl' --include='*.v' --include='*.sv'"
-                      (shell-quote-argument name)
-                      (shell-quote-argument (expand-file-name dir))))
-         (hits (split-string (shell-command-to-string cmd) "\n" t))
+(defun hdldep--grep (regexp)
+  ""
+  (thread-last
+    (split-string
+     (shell-command-to-string
+      (concat "git grep --files-with-matches " regexp)))
+    (cl-remove-if-not (lambda (x)
+                        (or (hdldep--file-is-vhdl x)
+                            (hdldep--file-is-verilog x))))))
+
+(defun hdldep--find-file-for-module (module _dir)
+  "Find the file defining MODULE using git grep."
+  (let* ((hits (hdldep--grep (shell-quote-argument (symbol-name module))))
          (definitions (cl-remove-if-not
                        (lambda (f)
-                         (condition-case nil
-                             (eq (hdldep--parse-entity-name f) module)
-                           (error nil)))
+                         (eq (hdldep--parse-entity-name f) module))
                        hits)))
     (cond
      ((null definitions) nil)
      ((= 1 (length definitions)) (car definitions))
      (t
-      ;; Multiple files claim the same module name: score by port similarity.
-      ;; The grep hits that are not definitions are instantiation sites — use
-      ;; them to collect observed formal port names.
+      ;; Multiple files define MODULE: score by port similarity against
+      ;; observed formal port names from instantiation sites in the grep hits.
       (let* ((inst-files (cl-remove-if (lambda (f) (member f definitions)) hits))
              (observed
-              (apply #'append
-                     (mapcar (lambda (f)
-                               (condition-case nil
-                                   (mapcar #'cdr
-                                           (cl-remove-if-not
-                                            (lambda (i) (eq (car i) module))
-                                            (hdldep--get-instantiation-info f)))
-                                 (error nil)))
-                             inst-files)))
-             (flat-observed (apply #'append observed))
+              (cl-mapcan (lambda (f)
+                           (thread-last
+                             (hdldep--get-instantiation-info f)
+                             (cl-remove-if-not (lambda (i) (eq (car i) module)))
+                             (mapcar #'cdr)))
+                         inst-files))
              (scored
-              (mapcar (lambda (f)
-                        (cons (hdldep--port-similarity
-                               (condition-case nil
-                                   (hdldep--parse-port-names f)
-                                 (error nil))
-                               flat-observed)
-                              f))
-                      definitions)))
+              (thread-last
+                definitions
+                (mapcar (lambda (f)
+                          (cons (hdldep--port-similarity
+                                 (hdldep--parse-port-names f)
+                                 observed)
+                                f))))))
         (cdr (car (sort scored (lambda (a b) (> (car a) (car b)))))))))))
 
 (defun hdldep--create-digraph-for-file (file &optional dir)
@@ -222,8 +220,7 @@ When multiple files define MODULE, uses port scoring to pick the best match."
   (member (file-name-extension file) '("vhd" "vhdl")))
 
 (defun hdldep--vhdl-or-verilog (file func-vhdl func-verilog)
-  "Dispatches function calls to the right flavor of a function.
-TODO: this is really ugly... "
+  "Dispatches function calls to the right flavor of a function."
   (cond ((hdldep--file-is-vhdl file) (funcall func-vhdl file))
         ((hdldep--file-is-verilog file) (funcall func-verilog file))
         (t (error (format  "Unrecognized file format %s" file)))))
@@ -261,6 +258,7 @@ TODO: this is really ugly... "
 LANGUAGE is the tree-sitter language symbol.
 QUERY must capture the name node as @name."
   (with-temp-buffer
+    (message "Opening %s" file)
     (insert-file-contents file)
     (treesit-parser-create language)
     (when-let* ((root (treesit-buffer-root-node language))
@@ -285,6 +283,7 @@ LANGUAGE is the tree-sitter language symbol.
 QUERIES is a list of treesit queries each capturing nodes as @name.
 Queries that raise `treesit-query-error' are silently skipped."
   (with-temp-buffer
+    (message "Opening %s" file)
     (insert-file-contents file)
     (treesit-parser-create language)
     (let* ((root (treesit-buffer-root-node language))
@@ -304,6 +303,7 @@ Queries that raise `treesit-query-error' are silently skipped."
 (defun hdldep--verilog-parse-entity-name (file)
   "Get the module name from a Verilog FILE using tree-sitter."
   (with-temp-buffer
+    (message "Opening %s" file)
     (insert-file-contents file)
     (treesit-parser-create 'verilog)
     (hdldep--treesit-try-queries
@@ -330,6 +330,7 @@ Queries that raise `treesit-query-error' are silently skipped."
 (defun hdldep--verilog-get-instantiation-info (file)
   "Get alist of (module-name . formal-port-symbols) for each instantiation in FILE."
   (with-temp-buffer
+    (message "Opening %s" file)
     (insert-file-contents file)
     (treesit-parser-create 'verilog)
     (let* ((root (treesit-buffer-root-node 'verilog))
@@ -380,6 +381,7 @@ Queries that raise `treesit-query-error' are silently skipped."
 (defun hdldep--vhdl-get-instantiation-info (file)
   "Get alist of (module-name . formal-port-symbols) for each instantiation in FILE."
   (with-temp-buffer
+    (message "Opening %s" file)
     (insert-file-contents file)
     (treesit-parser-create 'vhdl)
     (let* ((root (treesit-buffer-root-node 'vhdl))
@@ -405,6 +407,24 @@ Queries that raise `treesit-query-error' are silently skipped."
           (when module-name
             (push (cons module-name formal-ports) results))))
       results)))
+
+;;------------------------------------------------------------------------------
+;; Memoization
+;;------------------------------------------------------------------------------
+
+(when (locate-library "memoize")
+  (require 'memoize)
+
+  (defun hdldep--memoize (func)
+    "Memoize FUNC unless it has already been memoized."
+    (unless (get func :memoize-original-function)
+      (memoize func)))
+
+  (hdldep--memoize 'hdldep--get-instantiation-info)
+  (hdldep--memoize 'hdldep--parse-port-names)
+  (hdldep--memoize 'hdldep--get-entities)
+  (hdldep--memoize 'hdldep--parse-entity-name)
+  (hdldep--memoize 'hdldep--find-file-for-module))
 
 (provide 'hdldep)
 ;;; hdldep.el ends here
