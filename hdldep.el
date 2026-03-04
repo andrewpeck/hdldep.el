@@ -35,6 +35,40 @@
 (require 'treesit)
 
 ;;------------------------------------------------------------------------------
+;; Hierarchy Display
+;;------------------------------------------------------------------------------
+
+(defun hdldep-hierarchy-current-buffer (&optional choose-dir)
+  "Display a hierarchy tree for the current buffer using hierarchy.el.
+With prefix argument CHOOSE-DIR, prompt for the search directory."
+  (interactive "P")
+  (require 'hierarchy)
+  (let* ((dir (project-root (project-current)))
+         (_ (when choose-dir
+              (setq dir (read-directory-name "Search Directory:" dir))))
+         (edges (hdldep--create-digraph-for-file (buffer-file-name) dir))
+         (h (hierarchy-new))
+         ;; Build a child->parent lookup from the edge list (instantiator . instantiated)
+         (parent-map (make-hash-table))
+         (all-nodes nil))
+    (dolist (edge edges)
+      (let ((parent (car edge))
+            (child (cdr edge)))
+        ;; Only set parent once; first occurrence wins in a shared-instance DAG
+        (unless (gethash child parent-map)
+          (puthash child parent parent-map))
+        (push parent all-nodes)
+        (push child all-nodes)))
+    (dolist (node (delete-dups all-nodes))
+      (hierarchy-add-tree h node (lambda (item) (gethash item parent-map))))
+    (hierarchy-sort h)
+    (switch-to-buffer
+     (hierarchy-tabulated-display
+      h
+      (hierarchy-labelfn-indent
+       (lambda (item _) (insert (symbol-name item))))))))
+
+;;------------------------------------------------------------------------------
 ;; Graphviz Generation
 ;;------------------------------------------------------------------------------
 
