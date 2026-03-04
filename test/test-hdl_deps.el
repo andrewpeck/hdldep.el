@@ -15,6 +15,15 @@
        (should (cl-subsetp ,expected-edges result :test #'equal))
        (should (cl-subsetp result ,expected-edges :test #'equal)))))
 
+(hdl-dep-test "test/cluster_finder/cluster_packer.v"
+              '((cluster_packer . lac)
+                (cluster_packer . find_cluster_primaries)
+                (cluster_packer . count_clusters)
+                (cluster_packer . SRL16E)
+                (cluster_packer . cluster_finder)
+                (cluster_finder . priority768)
+                (cluster_finder . truncate_clusters)))
+
 (hdl-dep-test "test/me0sf/chamber.vhd"
               '((chamber . chamber_pulse_extension)
                 (chamber . dav_to_phase)
