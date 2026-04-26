@@ -144,7 +144,11 @@ and returns the equivalent output as a graphviz graph{}"
   (length (cl-intersection ports-a ports-b)))
 
 (defun hdldep--grep (regexp)
-  ""
+  "Search for hdl files with contents matching REGEXP.
+
+Searches in the current git repository.
+
+Returns a list of matching file paths."
   (thread-last
     (split-string
      (shell-command-to-string
@@ -244,10 +248,12 @@ and returns the equivalent output as a graphviz graph{}"
                             #'hdldep--verilog-parse-port-names))
 
 (defun hdldep--get-instantiation-info (file)
-  "Return an alist of (module-name . formal-port-symbols) for each instantiation in FILE."
+  "Get instantiated modules for each instantiation in FILE.
+
+Return an alist of (module-name . formal-port-symbols)"
   (hdldep--vhdl-or-verilog file
-                            #'hdldep--vhdl-get-instantiation-info
-                            #'hdldep--verilog-get-instantiation-info))
+                           #'hdldep--vhdl-get-instantiation-info
+                           #'hdldep--verilog-get-instantiation-info))
 
 ;;------------------------------------------------------------------------------
 ;; Tree-sitter Helpers
