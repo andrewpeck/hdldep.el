@@ -1,3 +1,4 @@
-tests/*  linguist-vendored
-makem.sh linguist-vendored
-Makefile linguist-vendored
+tests/*/*.v    linguist-vendored
+tests/*/*.vhd  linguist-vendored
+makem.sh       linguist-vendored
+Makefile       linguist-vendored
